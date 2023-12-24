@@ -1,0 +1,1073 @@
+/*@cc_on _d=document;eval('var document=_d')@*/
+
+var CurrentPage=1;
+var TotalPages=0;
+var offset=new Array();
+var thums=new Array();
+var gMod=false;  //true:onModifyField,onModifyScore抑止
+//xSplitter用
+var s1;
+var mW;  //mvinfoのwidth(サムネイル幅＋30(スクロールバー＆余白))
+var gVmode;
+var gChapdisp;
+var gConfig = new Array();
+
+//getElementsByClassName代替
+function GCN(className) {
+    var names=className.split(/\s+/),
+    all=document.getElementsByTagName("*"),
+    memo={},
+    ret=[];
+    for(var i=0,l=all.length,elem,iname,flag;i<l;i++) {
+      elem=all[i];
+      iname=elem.className;
+      if (!(iname in memo))
+        memo[iname]=" "+iname.toLowerCase()+" ";
+      for (var j=0,jname;j<names.length;j++) {
+        jname=names[j];
+        if (!(jname in memo))
+          memo[jname]=" "+jname.toLowerCase()+" ";
+        if(flag=memo[iname].indexOf(memo[jname])!=-1)continue;
+        else break;
+      }
+        if(flag)ret[ret.length]=elem;
+    }
+    return ret;
+}
+
+//再生時
+wb.onExec = function(id,playerID,start)
+{
+	/* Ver 0.7.0.0以前またはVer 0.7.1.0以降で
+	  「再生でスコア追加」を「はい」にしている場合は有効にしてください。 */
+	/*
+	gMod = true;
+	wb.addScore(id,-1);
+	gMod = false;
+	*/
+	return 0;
+}
+//フォーカス
+wb.onSetFocus = function(id, isFocus)
+{
+	var img = $("img" + id);
+	if(img == null) return;
+	if(isFocus){
+		img.className = "img_focus";
+		$("popup").style.display="none";
+		var mv = wb.getInfo(id);
+		showInfo(mv);
+		$("cover").src=img.src;
+		//$("morphtwk").value = mv.title;
+		$("morphtwk").value = wb.htmlDecode(mv.title).replace(/\\/g,"");
+		$("score").innerHTML = $("score"+id).innerHTML;
+		CreateMbtn($("morphtwk").value);
+		$("thum"+id).style.borderColor = "#C0C0C0";
+		$("thum"+id).style.borderStyle = "dotted";
+	}else{
+		img.className = "img_thum";
+		$("thum"+id).style.borderColor = "#000000";
+		$("thum"+id).style.borderStyle = "solid";
+	}
+}
+
+//viewの更新
+function updateView(mv){
+	$("view_count"+mv.id).innerText=mv.viewCount;
+	$("comment1_"+mv.id).innerText=mv.comments[0];
+	var orgTitle;
+	if( mv.orgTitle != "" ){
+		orgTitle = mv.orgTitle;
+	} else {
+		orgTitle = mv.title;
+	}
+	//$("title"+mv.id).innerText = orgTitle;
+	$("title"+mv.id).innerText = wb.htmlDecode(orgTitle).replace(/\\/g,"");
+	$("create_time"+mv.id).innerText=mv.createTime;
+	$("track"+mv.id).innerText=mv.track;
+	updateField(mv,Array("artist","writer","album","grouping","camera","genre"));
+}
+
+//詳細情報表示
+function showInfo(mv)
+{
+	$("view_count").innerText=mv.viewCount;
+	$("size").innerText=mv.size;
+	$("comment1").innerText=mv.comments[0];
+	//メディア情報
+	//$("title").innerHTML = '<a href="javascript:wb.find(\''+wb.htmlDecode(mv.orgTitle)+'\')">'+mv.orgTitle+'</a>';
+	$("title").innerHTML = '<a href="javascript:wb.find(\'{title=\\\''+wb.htmlDecode(mv.orgTitle)+'\\\'}\')">'+mv.orgTitle+'</a>';
+	$("create_time").innerText=mv.createTime;
+	$("track").innerText=mv.track;
+	//showIndexField(mv,Array("artist","writer","album"));
+	//showField(mv,Array("grouping","camera","genre"));
+	//とりあえず完全一致にする
+	showField(mv,Array("artist","writer","album","grouping","camera","genre"));
+	//タグ
+	showTags(mv.id,mv.tags);
+	//var tarr = SplitTitle(mv.title,0);
+	var tarr = SplitTitle(wb.htmlDecode(mv.title).replace(/\\/g,""),0);
+	tarr.unshift("");	//空の要素を先頭に追加する
+	UpdateMediaSel("title_sel",tarr);
+	UpdateMediaSel("track_sel",tarr);
+	UpdateMediaSel("create_time_sel",tarr);
+	UpdateMediaSel("artist_sel",tarr);
+	UpdateMediaSel("album_sel",tarr);
+	UpdateMediaSel("grouping_sel",tarr);
+	UpdateMediaSel("writer_sel",tarr);
+	UpdateMediaSel("camera_sel",tarr);
+	UpdateMediaSel("genre_sel",tarr);
+}
+
+//(未使用)検索対象の特殊フィールド表示
+function showIndexField( mv, fields ){
+	for( var i = 0; i < fields.length; i++ ){
+		value = eval('mv.'+fields[i]);
+		$(fields[i]).innerHTML='<a href="javascript:wb.find(\''+wb.htmlDecode(value)+'\')">'+value+'</a>';
+/* 誤消去防止のため削除
+		if( value != '' ){
+			$(fields[i]).innerHTML+= '<a class="a_remove" href="javascript:wb.modifyField('+mv.id+',\''+fields[i]+'\',\'\')">[x]</a>';
+		}
+*/
+	}
+}
+
+//(未使用)検索対象の特殊フィールド更新
+function updateIndexField( mv, fields ){
+	for( var i = 0; i < fields.length; i++ ){
+		value = eval('mv.'+fields[i]);
+		$(fields[i]+mv.id).innerText = value;
+	}
+}
+
+//検索対象外の特殊フィールド表示
+function showField( mv, fields ){
+	for( var i = 0; i < fields.length; i++ ){
+		value = eval('mv.'+fields[i]);
+		$(fields[i]).innerHTML='<a href="javascript:wb.find(\'{'+fields[i]+'=\\\''+wb.htmlDecode(value)+'\\\'}\')">'+value+'</a>';
+/* 誤消去防止のため削除
+		if( value != '' ){
+			$(fields[i]).innerHTML+= '<a class="a_remove" href="javascript:wb.modifyField('+mv.id+',\''+fields[i]+'\',\'\')">[x]</a>';
+		}
+*/
+	}
+}
+
+//検索対象外の特殊フィールド更新
+function updateField( mv, fields ){
+	for( var i = 0; i < fields.length; i++ ){
+		value = eval('mv.'+fields[i]);
+		$(fields[i]+mv.id).innerText = value;
+	}
+}
+
+function arrTags(id,tags){
+	var arr = new Array();
+	for(var i=0;i<tags.length;i++){
+		arr.push('<a href="javascript:wb.find(\''+wb.htmlDecode(tags[i])+'\')">'+tags[i]
+			+'</a><a class="a_remove" href="javascript:wb.removeTag(\''+id+'\',\''+wb.htmlDecode(tags[i])+'\')">[x]</a>');
+	}
+	return arr;
+}
+
+//タグ表示
+showTags = function(id,tags)
+{
+	var arr = new Array();
+	arr = arrTags(id,tags);
+	if( arr.length > 0 ){
+		$("tag").innerHTML='<li>'+arr.join('<li>');
+	} else {
+		$("tag").innerHTML='';
+	}
+	$("tag"+id).innerHTML=arr.join('　');
+}
+
+wb.onModifyTags = function(id,tags)
+{
+	showTags(id,tags);
+}
+//スコア表示更新
+wb.onModifyScore = function(id, score)
+{
+	if( gMod ) return;
+	if( $("score"+id) != null ){
+		var star = showScore(id,score);
+		$("score"+id).innerHTML = star;
+		$("score").innerHTML = star;
+	}
+	return;
+}
+//パス変更
+wb.onModifyPath = function(id, drive, dir, title, ext, kana)
+{
+	var mv = wb.getInfo(id);
+	var elem = $("title" + id);
+	if(elem != null){
+		if( mv.orgTitle != "" ){
+			elem.innerHTML = mv.orgTitle;
+		} else {
+			elem.innerHTML = title + ext;
+		}
+		elem.title=wb.htmlDecode(title)+ext;
+	}
+	elem = $("d_title" + id);
+	if(elem != null){
+		elem.innerHTML = title + ext;
+		elem.title=wb.htmlDecode(title)+ext;
+	}
+}
+
+//ページ
+goPage = function(add)
+{
+	CurrentPage=CurrentPage+add;
+	if(CurrentPage>TotalPages) CurrentPage=1;
+	if(CurrentPage==0) CurrentPage=TotalPages;
+	var int=wb.getProfile('page_int',50);
+	wb.update((CurrentPage-1)*int,int);
+}
+
+movePage = function(num)
+{
+	if(num==0) num=TotalPages;
+	CurrentPage=num;
+	var int=wb.getProfile('page_int',50);
+	wb.update((CurrentPage-1)*int,int);
+}
+
+showPageMenu = function()
+{
+	var popup=$("popup");
+	popup.style.display="block";
+	popup.style.width=100;
+	popup.style.height=TotalPages*20+15;
+	if(TotalPages*20+15>event.y-10) popup.style.height=event.y-10;
+	popup.style.left=event.x-45;
+	popup.style.bottom=document.body.clientHeight-event.y+10;
+	var str="";
+	for(var i=1;i<TotalPages+1;i++){
+		if(i!=CurrentPage){
+			str+='<a href="javascript:movePage('+i+')">PAGE '+i+'</a>';
+		} else {
+			str+='<span>PAGE '+i+'</span>';
+		}
+	}
+	popup.innerHTML=str;
+}
+//コンフィグ表示
+showConfig = function()
+{
+	var setting=$("setting");
+	if(setting.style.display=="none"){
+		setting.style.display="block";
+		$("pageint").value=wb.getProfile('page_int',50);
+		$("seamlesssroll").value=wb.getProfile('scroll',0);
+		var w = wb.getProfile('popthum_disp','none');
+		if( w == "block" ){
+			$("popthumdisp_on").checked = true;
+		} else {
+			$("popthumdisp_off").checked = true;
+		}
+		$("thumw").value=thums.tw;
+		$("thumh").value=thums.th;
+		$("thumc").value=thums.tc;
+		$("thumr").value=thums.tr;
+		$("chapw").value=thums.cw;
+		$("chaph").value=thums.ch;
+		$("chapc").value=thums.cc;
+		$("chapr").value=thums.cr;
+		$("glidw").value=thums.gw;
+		$("glidh").value=thums.gh;
+		w = wb.getProfile('chapdisp','on');
+		if( w == "on" ){
+			$("chapdisp_on").checked = true;
+		} else {
+			$("chapdisp_off").checked = true;
+		}
+		$("detail_col").value=wb.getProfile('detail_col',2);
+		//リスト表示
+		w = wb.getProfile('titlebr','on');
+		if( w == "on" ){
+			$("titlebr_on").checked = true;
+		} else {
+			$("titlebr_off").checked = true;
+		}
+		var tablehtml = "";
+		var ch = "";
+		for(var i = 0; i < gConfig.length; i++){
+			if( wb.getProfile("list_"+gConfig[i].name+"_disp",gConfig[i].disp) == "on" ){
+				ch = "checked";
+			} else {
+				ch = "";
+			}
+			tablehtml += '<span class="list_cfg"><span class="list_cfg_head"><input type="checkbox" value="on" '+ch+' id="list_'+gConfig[i].name+'_disp">'+gConfig[i].head+'</span><input class="list_cfg_w" type="text" id="list_'+gConfig[i].name+'_w" value="'+gConfig[i].width+'"><span> px</span></span>';
+		}
+		$("list_cfg_table").innerHTML = tablehtml;
+	} else {
+		setting.style.display="none";
+	}
+}
+//コンフィグ更新
+updateConfig = function()
+{
+	wb.writeProfile('page_int',$("pageint").value);
+	wb.writeProfile('scroll',$("seamlesssroll").value);
+	if( $("popthumdisp_on").checked == true ){
+		wb.writeProfile('popthum_disp',$("popthumdisp_on").value);
+	} else {
+		wb.writeProfile('popthum_disp',$("popthumdisp_off").value);
+	}
+	if($("thumw").value*$("thumh").value*$("thumc").value*$("thumr").value>0){
+		wb.writeProfile('thum_size',$("thumw").value+"x"+$("thumh").value+"x"+$("thumc").value+"x"+$("thumr").value);
+	} else {
+		alert("そのサムネイルサイズは不可です。");
+	}
+	if($("chapw").value*$("chaph").value*$("chapc").value*$("chapr").value>0){
+		wb.writeProfile('chap_size',$("chapw").value+"x"+$("chaph").value+"x"+$("chapc").value+"x"+$("chapr").value);
+	} else {
+		alert("そのチャプターサイズは不可です。");
+	}
+	wb.writeProfile('glid_size',$("glidw").value+"x"+$("glidh").value);
+	if( $("chapdisp_on").checked == true ){
+		wb.writeProfile('chapdisp','on');
+		gChapdisp = 'on';
+	} else {
+		wb.writeProfile('chapdisp','off');
+		gChapdisp = 'off';
+	}
+	if( $("detail_col").value > 0 ){
+		wb.writeProfile('detail_col',$("detail_col").value);
+	} else {
+		alert("列数には０より大きい値を指定してください");
+	}
+	//リスト表示
+	if( $("titlebr_on").checked == true ){
+		wb.writeProfile('titlebr','on');
+	} else {
+		wb.writeProfile('titlebr','off');
+	}
+	for(var i = 0; i < gConfig.length; i++){
+		if( $("list_"+gConfig[i].name+"_disp").checked ){
+			wb.writeProfile("list_"+gConfig[i].name+"_disp","on");
+			gConfig[i].disp = "on";
+		} else {
+			wb.writeProfile("list_"+gConfig[i].name+"_disp","off");
+			gConfig[i].disp = "off";
+		}
+		wb.writeProfile("list_"+gConfig[i].name+"_w",$("list_"+gConfig[i].name+"_w").value);
+		gConfig[i].width = parseInt($("list_"+gConfig[i].name+"_w").value);
+	}
+}
+
+//複数選択時にmodifyField(0,field,value)を実行した場合のみid=0が入る
+//onModifyTagsのように選択数分onModifyFieldが呼ばれる訳ではない
+wb.onModifyField = function(id)
+{
+	if( gMod ) return;
+	var mv;
+	var ids = new Array();
+	var fid = wb.getFocusThum();
+	if( id != 0 ){
+		ids[0] = id;
+	} else {
+		ids = wb.getSelectThums();
+	}
+	for(var i = 0; i < ids.length; i++ ){
+		mv = wb.getInfo(ids[i]);
+		updateView(mv);
+		//フォーカスしているIDならmvinfoも更新
+		if( ids[i] == fid ){
+			showInfo(mv);
+		}
+	}
+}
+
+/* 入力した文字列を特定のセパレータで区切って配列で返す */
+function SplitTitle(text,flag){
+    //flag!=0でセパレータも含めて返す
+    var wk = text.replace(/[\"]/g,''); //"""ダメ文字は削除
+    wk = wk.replace(/[\\]/g,'/'); //"\→/"
+    wk = wk.replace(/([\'])/g,'\\$1'); //"'"事前に置換しておく
+    if( flag != 0 ){
+      //セパレータも含めて返す
+      //指定したセパレータが見つかったら"/"を前後に挿入
+      wk = wk.replace(/([\(\)\[\]\&\.\{\},、：･・（）「」『』［］【】〔〕〈〉《》])/g,'/$1/');
+      wk = wk.replace(/\/[ 　]+/g,'/');  //先頭の空白を除去
+      wk = wk.replace(/[ 　]+\//g,'/');  //末尾の空白を除去
+      wk = wk.replace(/([ 　]+)/g,'/$1/');  //連続する空白は半角スペース１個にする
+      wk = wk.replace(/\/+/g,'/');  //連続するセパレータを除去
+      wk = wk.replace(/^\//,'');  //先頭に空要素があれば除去
+      wk = wk.replace(/\/$/,'');  //末尾に空要素があれば除去
+    } else {
+      //セパレータと空白を除いて返す
+      wk = wk.replace(/[\(\)\[\]\&\{\},、：･・（）「」［］『』【】〔〕〈〉《》 　]/g,'/');
+      wk = wk.replace(/\/+/g,'/');  //連続するセパレータを除去
+      wk = wk.replace(/^\//,'');  //先頭に空要素があれば除去
+      wk = wk.replace(/\/$/,'');  //末尾に空要素があれば除去
+    }
+    return wk.split('/');
+}
+
+function CreateMbtn(text){
+    var ts = SplitTitle(text,1);
+    $("morphbtn").innerHTML="";
+    var sty,tbtn="";
+    for(var i = 0; i < ts.length; i++ ){
+      //セパレータ＆空白とキーワードの表示色を別にする
+      if( ts[i].match(/[\(\)\[\]\&\.\{\},、：･・（）「」［］『』【】〔〕〈〉《》 　]/) ){
+        sty = ' style="background-color: #cccccc" ';
+        //bbtn+='<td></td>';
+      } else {
+        sty = ' style="background-color: #ffffff" ';
+      }
+      //"'"はボタン表示のみ元に戻す
+      tbtn+='<td><input class="mbtn" type="button" value="' + ts[i].replace(/\\([\'])/g,'$1') + '"' + sty
+       + 'onclick="MbtnClick(this)" oncontextmenu="MbtnContextmenu(this)"' + ' title="左クリック：一時ボックスに追加\r\n右クリック：テキストメニュー表示"></td>' ;
+    }
+    $("morphbtn").innerHTML='<table>' + '<tr>' + tbtn + '</tr>' + '</table>';
+    return;
+}
+
+function MbtnClick( obj ){
+  $('morpht').focus();
+  $('morpht').value += obj.value;
+}
+
+function MbtnContextmenu( obj ){
+  wb.showTextMenu( obj.value );
+}
+
+function thumClick( id ){
+  wb.focusThum( id );
+}
+
+function GetDiclist(){
+  var dicfname = wb.getDBName().replace(/(.*)\.wb/i,"$1_diclist.txt");
+  var diclist = wb.readFile(dicfname);
+  diclist.shift();  //先頭行は除いて返す
+  return diclist;
+}
+
+function SearchDic( word, dicitem, dicname ){
+  var re = new RegExp("^"+word+"\/"+dicitem+"$");
+  //辞書ファイルを順に検索
+  var dic = wb.readFile(dicname+".txt");
+  for(var i = 0; i < dic.length; i++ ){
+    if( dic[i].match(re) != null ){
+      return true;
+    }
+  }
+  return false;
+}
+
+function SearchDicAll(text){
+  var diclist = GetDiclist()
+  var dic;
+  var arrM = new Array();
+  text = text.replace(/([\+\*\?\$\{\}\^\-\(\)\[\]\.])/g,'\\$1');
+  var re = new RegExp("^"+text+"\/(.*)","i");
+  //辞書ファイルを順に検索
+  for(var i = 0; i < diclist.length; i++ ){
+    dic = wb.readFile(diclist[i].replace(/\/.*/,""));
+    diclist[i].match(/.*\.txt\/(.*)\/(.*)/);
+    dicid = RegExp.$1;
+    dicname = RegExp.$2;
+    for(var j = 0; j < dic.length; j++ ){
+      if( dic[j].match(re) != null ){
+        str = RegExp.$1;
+        arrM.push('');
+        arrM[arrM.length-1] = new Object();
+        arrM[arrM.length-1].dicid = dicid;
+        arrM[arrM.length-1].dicname = dicname;
+        arrM[arrM.length-1].word = str;
+        //１件でも見つかったら抜ける
+        if( dicid != "tag" ){
+          break;
+        }
+      }
+    }
+    if( (arrM.length > 0) && (dicid != "tag") ){
+      //１件でも見つかったら抜ける
+      break;
+    }
+  }
+  //辞書ID、辞書名、マッチした文字列の配列を返す
+  return arrM;
+}
+
+//selectタグを更新
+function UpdateMsel( id, dicname ){
+  var dic = wb.readFile(dicname+'.txt');
+  var elmsel = $(id);
+  var elmOption; 
+  var elmText;
+  while( elmsel.firstChild ){
+    elmsel.removeChild(elmsel.firstChild);
+  }
+  //空の要素を先頭に追加する
+  dic.unshift('/');
+  for(var i = 0; i < dic.length; i++ ){
+    elmOption = document.createElement('option'); 
+    dic[i].match(/\/(.*)/);
+    str = RegExp.$1;
+    elmText = document.createTextNode(str);
+    elmOption.value = str;
+    elmOption.appendChild(elmText);
+    elmsel.appendChild(elmOption);
+  }
+  return;
+}
+function UpdateDicList( id ){
+  var diclist = GetDiclist()
+  var elmsel = $(id);
+  var elmOption; 
+  var elmText;
+  while( elmsel.firstChild ){
+    elmsel.removeChild(elmsel.firstChild);
+  }
+  for( var i = 0; i < diclist.length; i++ ){
+    elmOption = document.createElement('option'); 
+    diclist[i].match(/.*\.txt\/(.*)\/(.*)/);
+    vstr = RegExp.$1;
+    str = RegExp.$2;
+    elmText = document.createTextNode(str);
+    elmOption.value = vstr;
+    elmOption.appendChild(elmText);
+    elmsel.appendChild(elmOption);
+  }
+  return;
+}
+
+function AddWordToDic( word, dicitem, dicname ){
+  if( (word != "") && (dicname != "") ){
+    if( dicitem == "" ){
+      dicitem = word;
+    }
+    if( !SearchDic( word, dicitem, dicname ) ){
+      wb.writeFile( dicname+'.txt', word+'/'+dicitem, 0 );
+      alert("登録しました");
+    } else {
+      alert("既に登録済です");
+    }
+    Element.hide("DicDlg");
+  } else {
+    alert("登録する単語を入力してください");
+  }
+}
+
+function UpdateMediaInfo(id,overwrite){
+  //overwrite==0で未入力の項目のみ更新
+  //overwrite!=0で強制的に上書き
+  gMod = true;
+  var mv = wb.getInfo(id);
+  var title = RegMediaInfo(mv,overwrite);
+  var updt = new Object();
+  if( overwrite != 0 ){  //上書き
+    //全項目未更新として扱う
+    updt.artist = true;
+    updt.album = true;
+    updt.grouping = true;
+    updt.writer = true;
+    updt.genre = true;
+  } else {  //更新
+    mv = wb.getInfo(id);  //再取得
+    updt.artist = (mv.artist!="") ? false : true;
+    updt.album = (mv.album!="") ? false : true;
+    updt.grouping = (mv.grouping!="") ? false : true;
+    updt.writer = (mv.writer!="") ? false : true;
+    updt.genre = (mv.genre!="") ? false : true;
+  }
+  var arr = SplitTitle(title,0);
+  var arrM = new Array();
+  var titlewk = "";  //タイトル候補
+  var titlewks = new Array();  //タイトル候補配列
+  for( var i = 0; i < arr.length; i++ ){
+    arrM = SearchDicAll(arr[i]);
+    for( var j = 0; j < arrM.length; j++ ){
+      if( arrM[j].dicid == "tag" ){
+        wb.addTag(mv.id,arrM[j].word);
+      } else if( eval('updt.'+arrM[j].dicid) ){
+        wb.modifyField(mv.id,arrM[j].dicid,arrM[j].word);
+        eval("updt."+arrM[j].dicid+" = false"); //該当項目は更新済とする
+      }
+    }
+    //いずれの辞書にもマッチしない場合 タイトル候補とする
+    if( arrM.length == 0 ){
+      titlewks.push(arr[i]);
+    }
+  }
+  //タイトル更新
+  if( (mv.orgTitle=="")||(overwrite!=0) ){
+    wb.modifyField(mv.id,"title",titlewks.join(" ").replace(/\\([\'])/g,'$1'));
+  }
+  gMod = false;
+  wb.onModifyField( mv.id );
+  return;
+}
+
+function GetRegname(){
+  var dicfname = wb.getDBName().replace(/(.*)\.wb/i,"$1_diclist.txt");
+  var diclist = wb.readFile(dicfname);
+  if( diclist.length == 0 ) return "";
+  return diclist[0].replace(/\/.*/,"");  //先頭行を返す
+}
+
+//正規表現でメディア情報更新
+function RegMediaInfo(mv,overwrite){
+  var regfname = GetRegname();
+  //if( regfname == "" ) return mv.title;
+  var title = wb.htmlDecode(mv.title).replace(/\\/g,"");
+  if( regfname == "" ) return title;
+  var regline = wb.readFile(regfname);
+  var regcmd = "";
+  var regflg = "";
+  var regtext = "";
+  var regaction = "";
+  var re = new RegExp();
+  //var title = mv.title;
+  for(var i = 0; i < regline.length; i++ ){
+    // 書式：コマンド[es]/パターン/アクション/フラグ[i]
+    if( regline[i].match(/^([eds])\/(.*?)\/(.*)\/(i?)/) != null ){
+      regcmd = RegExp.$1;
+      regtext = RegExp.$2;
+      regaction = RegExp.$3;
+      regflg = RegExp.$4;
+      if( regflg == "i" ){
+        re = RegExp(regtext,"i");
+      } else {
+        re = RegExp(regtext);
+      }
+      if( title.match(re) != null ){
+        eval(regaction);
+        if( regcmd == "s" ){
+          //sコマンドの場合マッチした部分は削除する
+          title = title.replace(re,"");
+        }
+      }
+    }
+  }
+  return title;
+}
+
+//３桁毎にカンマ追加
+function addFigure(str) {
+	//既にカンマがある場合は削除して振りなおす
+	var num = new String(str).replace(/,/g, "");
+	while(num != (num = num.replace(/^(-?\d+)(\d{3})/, "$1,$2")));
+	return num;
+}
+
+//並び替え
+//inputオブジェクト、昇順、降順
+function ToggleOrder(obj,order1,order2) {
+	var wkv;
+	if( obj.value.match(/^▼/) != null ){
+		wkv = obj.value.replace('▼','▲');
+		wb.addOrder(order1,1);
+	} else if( obj.value.match(/^▲/) != null ){
+		wkv = obj.value.replace('▲','▼');
+		wb.addOrder(order2,1);
+	} else {
+		//初回は昇順とする
+		//wkv = '▲' + obj.value;
+		//wb.addOrder(order1,1);
+		//初回は降順とする
+		wkv = '▼' + obj.value;
+		wb.addOrder(order2,1);
+	}
+	var elms = GCN('list_order');
+	for( var i = 0; i < elms.length; i++ ){
+		elms[i].value = elms[i].value.replace(/^[▲▼]/,'');
+	}
+	obj.value = wkv;
+	$('view').focus();
+}
+
+//表示モード変更
+function ChangeVmode(vmode){
+	var w;
+	var sbar_disp = wb.getProfile(vmode+"_sidebar","on");
+	if( sbar_disp == "off" ){
+		w = 1;
+	} else {
+		w = $('mvinfo').value;
+	}
+	document.styleSheets.glidcss.disabled = true;
+	document.styleSheets.listcss.disabled = true;
+	document.styleSheets.detailcss.disabled = true;
+	if( vmode == "GLID" ){
+		$("modecss").href="ZDK_glid.css";
+		$("chgvbtn_list").className = "chgvbtn_off";
+		$("chgvbtn_detail").className = "chgvbtn_off";
+		$("chgvbtn_glid").className = "chgvbtn_on";
+		document.styleSheets.glidcss.disabled = false;
+	} else if( vmode == "LIST" ){
+		$("modecss").href="ZDK_list.css";
+		$("chgvbtn_glid").className = "chgvbtn_off";
+		$("chgvbtn_detail").className = "chgvbtn_off";
+		$("chgvbtn_list").className = "chgvbtn_on";
+		document.styleSheets.listcss.disabled = false;
+		var totalw = getListTotalw();
+		var twidth = document.body.clientWidth-w-45-totalw;
+		if( twidth <= 0 ){
+			twidth = 1;
+		}
+		document.styleSheets.modecss.addRule(".head_title","width:"+twidth+"px");
+		document.styleSheets.modecss.addRule(".list_title","width:"+twidth+"px");
+	} else if( vmode == "DETAIL" ){
+		$("modecss").href="ZDK_detail.css";
+		$("chgvbtn_glid").className = "chgvbtn_off";
+		$("chgvbtn_list").className = "chgvbtn_off";
+		$("chgvbtn_detail").className = "chgvbtn_on";
+		document.styleSheets.detailcss.disabled = false;
+	} else {
+		return;
+	}
+	wb.writeProfile("view_mode",vmode);
+	gVmode = vmode;
+	mW = w;
+	win_onresize();
+	$("view").focus();
+}
+
+//各メディア情報を直接入力する
+function EditMediaInfo( title, field ){
+	var mv = wb.getInfo();
+	var oldvalue = eval('mv.'+field);
+	if( oldvalue == undefined ){
+		oldvalue = "";
+	}
+	var newvalue = prompt( title, oldvalue );
+	if( newvalue != null ){
+		wb.modifyField( mv.id, field, newvalue );
+	}
+}
+
+//メディア情報欄のselectタグを更新
+function UpdateMediaSel( id, arr ){
+  var elmsel = $(id);
+  var elmOption; 
+  var elmText;
+  while( elmsel.firstChild ){
+    elmsel.removeChild(elmsel.firstChild);
+  }
+  for(var i = 0; i < arr.length; i++ ){
+    elmOption = document.createElement('option'); 
+    elmText = document.createTextNode(arr[i].replace(/\\([\'])/g,'$1'));
+    elmOption.value = arr[i].replace(/\\([\'])/g,'$1');
+    elmOption.appendChild(elmText);
+    elmsel.appendChild(elmOption);
+  }
+  return;
+}
+
+function showpopthum(id){
+	if( $("img"+id) ){
+		$("popimg").src = $("img"+id).src;
+	} else {
+		$("popimg").src = "";
+	}
+	if( $("chp"+id) ){
+		$("popchp").src = $("chp"+id).src;
+	} else {
+		$("popchp").src = "";
+	}
+	var eh = parseInt(event.clientY);
+	var ew = parseInt(event.clientX);
+	var ch = xClientHeight();
+	var cw = xClientWidth();
+
+	//表示位置調整
+	var ph = (thums.th * thums.tr);
+	$("popthum").style.top = eh + 20;
+	if( (eval(eh + ph + 20) > ch) && ((eh - ph - 20) >= 0) ){
+		$("popthum").style.top = eh - ph - 20;
+	}
+
+	$("popthum").style.left = ew;
+	var pw = (thums.tw * thums.tc) + thums.cdw + 20;
+	if( (eval(ew + pw) > cw) && ((cw - pw) >= 0) ){
+		$("popthum").style.left = cw - pw;
+	}
+
+	Element.show($("popthum"));
+}
+
+//onSkinEnterから１回だけ呼ばれる
+function win_onload()
+{
+  var cw = xClientWidth();
+  var ch = xClientHeight();
+  mW = parseInt(thums.tw*thums.tc) + 30;
+  $("mvinfo").style.width = mW;
+  $("mvinfo").value = mW;
+  $("cover").style.width = thums.tw*thums.tc;
+  $("cover").style.height = thums.th*thums.tr;
+  var sbar_disp = wb.getProfile(gVmode+"_sidebar","on");
+  if( sbar_disp == "off" ){
+    mW = 1;
+  }
+  var mH = $("morphf").clientHeight;
+  var w = cw;
+  var h = ch - mH;
+                   // sSplId,         X, Y, W, H, Horz , BarW, BarPos, BarLim1, BarLim2, BarEn, BorW, oSplChild1, oSplChild2
+  s1 = new xSplitter('idSplitter1'  , 0,mH, w, h, true ,  10,    mW,     mW,      mW,    false,  3, 0);
+  $("vhead").style.top = mH;
+  $("vhead").style.left = $("mvinfo").clientWidth;
+  $("view").style.top = $("vhead").offsetTop + $("vhead").clientHeight;
+  $("view").style.left = $("mvinfo").clientWidth;
+  $("view").style.width = cw - mW;
+  $("viewPane").style.width = "auto";
+  $("view").style.width = cw - mW - 15;
+  $("view").style.height = h - $("vhead").clientHeight - $("pagebtn").clientHeight -20;
+  $("pagebtn").style.width = cw - mW;
+
+  xAddEventListener(window, 'resize', win_onresize, false);
+
+};
+
+function win_onresize()
+{
+  var cw = xClientWidth();
+  var ch = xClientHeight();
+  var mH = $("morphf").clientHeight;
+  var w = cw;
+  var h = ch - mH;
+  s1.paint(w, h, mW);
+  $("view").style.width = cw - mW;
+  $("viewPane").style.width = "auto";
+  $("view").style.width = cw - mW - 15;
+  $("view").style.height = h - $("vhead").clientHeight - $("pagebtn").clientHeight - 20;
+  $("pagebtn").style.width = cw - mW;
+  if( gVmode == "LIST" ){
+    title_resize();
+  }
+}
+
+//タイトル部分をリサイズ たまに崩れる
+function title_resize(){
+  var totalw = getListTotalw();
+  var twidth = document.body.clientWidth-mW-45-totalw;
+  if( twidth <= 0 ){
+    twidth = 1;
+  }
+  var elms = GCN("head_title");
+  for(var i = 0; i < elms.length; i++ ){
+    elms[i].style.width = twidth;
+  }
+  elms = GCN("list_title");
+  for(var i = 0; i < elms.length; i++ ){
+    elms[i].style.width = twidth;
+  }
+  document.styleSheets.listcss.addRule(".head_title","width:"+twidth+"px");
+  document.styleSheets.listcss.addRule(".list_title","width:"+twidth+"px");
+}
+
+function modifyScore(id,score){
+	var mv = wb.getInfo(id);
+	wb.addScore(id,score-mv.score);
+}
+
+function showScore(id,score){
+	var star='<a class="star_off" href="javascript:modifyScore('+id+','+0+')" style="font-size:90%">×</a>';
+	for(var i = 1; i <= 5; i++ ){
+		if( i <= score ){
+			star += '<a class="star_on" href="javascript:modifyScore('+id+','+i+')">★</a>';
+		} else {
+			star += '<a class="star_off" href="javascript:modifyScore('+id+','+i+')">☆</a>';
+		}
+	}
+	return star;
+}
+
+// イベント処理
+// thum
+function thum_onclick(elm) {
+	var id_num;
+	if( elm.id == undefined ) return;
+	if( event.srcElement.id.search(/^img/) != -1 ) return;
+	var id_num = elm.id.replace(/thum/g, '');
+	//Shift+Ctrlの場合はShift優先
+	if(event.shiftKey){
+		var fmv = wb.getInfo(0);
+		var imv = wb.getInfo(id_num);
+		var start,cnt;
+		if( parseInt(fmv.offset) > parseInt(imv.offset) ){
+			start = imv.offset - 1;
+			cnt = fmv.offset - imv.offset + 1;
+		} else {
+			start = fmv.offset - 1;
+			cnt = imv.offset - fmv.offset + 1;
+		}
+		var ids = wb.getInfos(start,cnt).collect(
+			function(mv){
+				return mv.id;
+			}
+		);
+		wb.focusThum(fmv.id);  //フォーカスされているファイル以外の選択を解除
+		ids.each(
+			function(id){
+				wb.selectThum( id );
+			}
+		);
+	} else if(event.ctrlKey){
+		var mv = wb.getInfo(id_num);
+		//フォーカス変更前の選択状態を保存(focusThumで選択状態が解除されるため)
+		var ids = wb.getSelectThums();
+		wb.focusThum( id_num );
+		//フォーカス変更前の選択状態に戻す
+		ids.each(
+			function(id){
+				wb.selectThum( id );
+			}
+		);
+		//クリックしたファイルの選択状態を反転
+		if( mv.select == 1 ){
+			wb.selectThum( id_num, 0 );
+		} else {
+			wb.selectThum( id_num, 1 );
+		}
+	} else {
+		wb.focusThum( id_num );
+	}
+}
+
+function thum_oncontextmenu(elm) {
+	if( elm.id == undefined ) return;
+	if( event.srcElement.id.search(/^img/) != -1 ) return;
+	var id_num = elm.id.replace(/thum/g, '');
+	var ids = wb.getSelectThums();
+	if( ids.indexOf(id_num) != -1 ){
+		wb.showContextMenu(0);
+	} else {
+		wb.focusThum( id_num );
+		wb.showContextMenu(0);
+	}
+}
+
+function thum_ondblclick(elm) {
+	if( elm.id == undefined ) return;
+	if( event.srcElement.id.search(/^img/) != -1 ) return;
+	var id_num = elm.id.replace(/thum/g, '');
+	wb.exec(0);
+}
+
+function thum_onmouseover(elm) {
+	if( gVmode != "LIST" ) return;
+	if( elm.id == undefined ) return;
+	if( elm.id.search(/^thum/) == -1 ) return;
+	if( elm.style == undefined ) return;
+	elm.style.borderColor = "#FFFF80";
+}
+
+function thum_onmouseout(elm) {
+	if( elm.id == undefined ) return;
+	if( elm.id.search(/^thum/) == -1 ) return;
+	if( elm.style == undefined ) return;
+	if( elm.style.borderStyle == "dotted" ){
+		//フォーカスされているファイルなら
+		elm.style.borderColor = "#C0C0C0";
+	} else {
+		elm.style.borderColor = "#000000";
+	}
+}
+//img
+function img_onmouseover(elm) {
+	if( elm.id == undefined ) return;
+	if( gVmode != "GLID" ) return;
+	var disp = wb.getProfile("popthum_disp","none");
+	//コンフィグで非表示になっているか
+	if( disp == "none" ) return;
+	var id_num = elm.id.replace(/img/g, '');
+	showpopthum(id_num);
+}
+
+function img_onmouseout() {
+	Element.hide($("popthum"));
+	$("view").style.filter="";
+}
+
+function clsDragBar_click(){
+	if( mW != $('mvinfo').value ){
+		mW = $('mvinfo').value;
+		wb.writeProfile(gVmode+"_sidebar","on");
+	} else {
+		mW = 1;
+		wb.writeProfile(gVmode+"_sidebar","off");
+	}
+	win_onresize();
+}
+
+function LoadDef(){
+	for(var i = 0; i < gConfig.length; i++){
+		if( gConfig[i].defaultdisp == "on" ){
+			$("list_"+gConfig[i].name+"_disp").checked = true;
+		} else {
+			$("list_"+gConfig[i].name+"_disp").checked = false;
+		}
+		$("list_"+gConfig[i].name+"_w").value = gConfig[i].defaultwidth;
+	}
+}
+
+function getVCodec( mv ){
+	var vCodec = mv.container;
+	var mvVL = mv.video.toLowerCase();
+	var mvCntL = mv.container.toLowerCase();
+	if (mvVL.match(/dx50|div5|blz0/)) vCodec = "DivX5.x";
+	else if (mvVL.indexOf("divx") !== -1) vCodec = "DivX4";
+	else if (mvVL.match(/col\d|div[1-46]|m4s2|mp4s|mpg3|ump4|xvix/)) vCodec = "divx3";
+	else if (mvVL.match(/div.|3ivd/)) vCodec = "DivX";
+	else if (mvVL.indexOf("xvid") !== -1) vCodec = "XviD";
+	else if (mvVL.indexOf("wmv") !== -1) vCodec = "WMV";
+	else if (mvVL.match(/windows&nbsp;media&nbsp;video&nbsp;v?(\d)/)) vCodec = "WMV" + RegExp.$1;
+	else if (mvVL.match(/avc1|avc|davc|vssh|x264|ndx./)) vCodec = "H.264";
+	else if (mvVL.match(/h\.?26(\d)/)) vCodec = "H.26" + RegExp.$1;
+	else if (mvVL.match(/mp4.|mpg4|mpeg-4/)) vCodec = "MPEG4";
+	else if (mvVL.match(/rv(\d\d)|realvideo/)) vCodec = "RV" + RegExp.$1;
+	else if (mvVL.match(/vp(\d\d)/)) vCodec = "VP" + RegExp.$1;
+	else if (mvVL.indexOf("ccir601") !== -1 || mvCntL == "mpeg1") vCodec = "MPEG1";
+	else if (mvCntL == "mpeg2") vCodec = "MPEG2";
+	return vCodec;
+}
+
+function getACodec( mv ){
+	var aCodec = "-";
+	var mvAL = mv.audio.toLowerCase();
+	if (mvAL.match(/mpeg\d-layeriii|0055/)) aCodec = "MP3";
+	else if (mvAL.indexOf("mpeg1-layerii") !== -1) aCodec = "MP2";
+	else if (mvAL.indexOf("mpeg1-layeri") !== -1) aCodec = "MP1";
+	else if (mvAL.match(/vorbis|speex/)) aCodec = "Ogg";
+	else if (mvAL.match(/dolby&nbsp;ac-(\d)/)) aCodec = "AC" + RegExp.$1;
+	else if (mvAL.indexOf("mp4a") !== -1) aCodec = "MP4 AAC";
+	else if (mvAL.match(/windows&nbsp;media&nbsp;audio&nbsp;v?(\d)|016\d/)) aCodec = "WMA" + RegExp.$1;
+	else if (mvAL.match(/14_4|lpcj|28_8|sipr|dnet|cook|atrc|raac|racp|realaudio/)) aCodec = "RA";
+	else if (mvAL.match(/0001|0002|pcm/)) aCodec = "PCM";
+	return aCodec;
+}
+
+function getFps( mv ){
+	var vFps = "-";
+	if(mv.video.match(/([\d\.]+)fps/)){
+		vFps = RegExp.$1;
+	}
+	return vFps;
+}
+
+function getBit( mv ){
+	var vBit = "-";
+	if(mv.video.match(/([\d\.]+)kb\/s/)){
+		vBit = RegExp.$1;
+	}
+	return vBit;
+}
+
+function getListTotalw(){
+	var totalw = 0;
+	for(var i = 0; i < gConfig.length; i++){
+		if( gConfig[i].disp == "on" ){
+			totalw += gConfig[i].width;
+		}
+	}
+	return totalw;
+}
